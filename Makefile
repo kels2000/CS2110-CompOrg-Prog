@@ -1,40 +1,67 @@
-CC = gcc
-CHECK_LIBS = $(shell pkg-config --cflags --libs check)
-CFILES = tests.c list.c suites/list_suite.c
-HFILES = list.h suites/test_utils.h
-OFILES = suites/test_utils.o tests.o list.o suites/list_suite.o
+################################################################################
+# These are variables for the GBA toolchain build
+# You can add others if you wish to
+# ***** YOUR NAME HERE *****
+################################################################################
 
-CFLAGS = -std=c99 -pedantic -Wall -Werror -Wextra -g \
-         -Wstrict-prototypes -Wold-style-definition
+# TA-TODO: Put your application name here.
+# This should be a just a name i.e MyFirstGBAProgram
+# No SPACES AFTER THE NAME.
+PROGNAME = App
 
-.PHONY: default run-tests run-gdb run-valgrind clean
+# TA-TODO: Add the C files you want compiled here (replace extension with .o)
+# Here you must put a list of all of the object files
+# that will be compiled into your program. For example
+# if you have main.c and myLib.c then in the following
+# line you would put main.o and myLib.o
+OFILES = gba.o font.o main.o images/ball.o images/end.o images/win.o images/start.o images/bg.o
 
-default: run-tests
+################################################################################
+# These are various settings used to make the GBA toolchain work
+# DO NOT EDIT BELOW.
+################################################################################
 
-%.o: %.c $(HFILES)
-	$(CC) $(CFLAGS) -c $< -o $@
+.PHONY: all
+all: CFLAGS += $(CRELEASE) -I../shared
+all: LDFLAGS += $(LDRELEASE)
+all: $(PROGNAME).gba
+	@echo "[FINISH] Created $(PROGNAME).gba"
 
-list.o: list.c $(HFILES)
-	$(CC) $(CFLAGS) -include suites/fakemalloc.h -c $< -o $@
+include /opt/cs2110-tools/GBAVariables.mak
 
--include sneakyboi.mak
+LDFLAGS += --specs=nosys.specs
 
-hw9:
-	$(CC) main.c list.c $(CFLAGS) -o hw9
+# Adjust default compiler warnings and errors
+CFLAGS += -Wstrict-prototypes -Wold-style-definition
 
-tests: $(OFILES)
-	$(CC) $(CFLAGS) $^ -o $@ $(CHECK_LIBS)
+debug: CFLAGS += $(CDEBUG) -I../shared
+debug: LDFLAGS += $(LDDEBUG)
+debug: $(PROGNAME).gba
+	@echo "[FINISH] Created $(PROGNAME).gba"
 
-run-tests: tests
-	./tests $(TEST)
+$(PROGNAME).gba: $(PROGNAME).elf
+	@echo "[LINK] Linking objects together to create $(PROGNAME).gba"
+	@$(OBJCOPY) -O binary $(PROGNAME).elf $(PROGNAME).gba
 
-run-gdb: tests
-	CK_FORK=no gdb --args ./tests $(TEST)
+$(PROGNAME).elf: crt0.o $(GCCLIB)/crtbegin.o $(GCCLIB)/crtend.o $(GCCLIB)/crti.o $(GCCLIB)/crtn.o $(OFILES) libc_sbrk.o
+	$(CC) -o $(PROGNAME).elf $^ $(LDFLAGS)
 
-# To prevent leak false postives, tell check not to fork.
-# See: http://check.sourceforge.net/doc/check_html/check_4.html#Finding-Memory-Leaks
-run-valgrind: tests
-	CK_FORK=no valgrind --quiet --leak-check=full --error-exitcode=1 --show-leak-kinds=all --errors-for-leak-kinds=all ./tests $(TEST)
+.PHONY: med
+med: CFLAGS += $(CRELEASE) -I../shared
+med: LDFLAGS += $(LDRELEASE)
+med: $(PROGNAME).gba
+	@echo "[EXECUTE] Running emulator Mednafen"
+	@echo "          Please see emulator.log if this fails"
+	@mkdir -p ~/.mednafen/
+	@cp mednafen-09x.cfg ~/.mednafen/
+	@mednafen $(MEDOPT) $(PROGNAME).gba >emulator.log 2>&1
 
+.PHONY: submit
+submit: clean
+	@rm -f submission.tar.gz
+	@tar czvf submission.tar.gz *
+
+.PHONY: clean
 clean:
-	rm -rf tests hw9 $(filter-out suites/test_utils.o,$(OFILES)) *check*
+	@echo "[CLEAN] Removing all compiled files"
+	rm -f *.o *.elf *.gba *.log */*.o
